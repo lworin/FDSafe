@@ -22,8 +22,6 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
-#include <stdio.h>
-
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -34,9 +32,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 
-#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
-#define DATA_SIZE 12
-
+//#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -46,6 +42,8 @@
 
 /* Private variables ---------------------------------------------------------*/
 FDCAN_HandleTypeDef hfdcan1;
+
+RNG_HandleTypeDef hrng;
 
 UART_HandleTypeDef huart1;
 
@@ -58,23 +56,13 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_FDCAN1_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_RNG_Init(void);
 /* USER CODE BEGIN PFP */
-
-void debug_FDCAN_Status();
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-
-FDCAN_TxHeaderTypeDef TxHeader;
-FDCAN_RxHeaderTypeDef RxHeader;
-uint8_t TxData[DATA_SIZE];
-uint8_t RxData[DATA_SIZE];
-
-int idx = 0;
-int myerror;
-int txq;
 
 /* USER CODE END 0 */
 
@@ -109,25 +97,10 @@ int main(void)
 	MX_GPIO_Init();
 	MX_FDCAN1_Init();
 	MX_USART1_UART_Init();
+	MX_RNG_Init();
 	/* USER CODE BEGIN 2 */
 
-	if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK)
-	{
-		Error_Handler();
-	}
-
-	HAL_GPIO_WritePin(MLED1_GPIO_Port, MLED1_Pin, GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(CAN_MODE_GPIO_Port, CAN_MODE_Pin, GPIO_PIN_RESET);
-
-	TxHeader.Identifier = 0x11;
-	TxHeader.IdType = FDCAN_STANDARD_ID;
-	TxHeader.TxFrameType = FDCAN_FRAME_FD_NO_BRS;
-	TxHeader.DataLength = FDCAN_DLC_BYTES_12;
-	TxHeader.ErrorStateIndicator = FDCAN_ESI_ACTIVE;
-	TxHeader.BitRateSwitch = FDCAN_BRS_OFF;
-	TxHeader.FDFormat = FDCAN_FD_CAN;
-	TxHeader.TxEventFifoControl = FDCAN_NO_TX_EVENTS;
-	TxHeader.MessageMarker = 0;
+	fdsafe_setup();
 
 	/* USER CODE END 2 */
 
@@ -137,31 +110,13 @@ int main(void)
 	{
 		/* USER CODE END WHILE */
 
+		fdsafe_main();
+
 		/* USER CODE BEGIN 3 */
-		for (int i = 0; i < DATA_SIZE; i++)
-		{
-			TxData[i] = idx++;
-		}
 
-		uint8_t ret = HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, TxData);
-
-		printf("TXret: %d | ", ret);
-
-		debug_FDCAN_Status();
-
-		if (ret != HAL_OK)
-		{
-			Error_Handler();
-		}
-
-		HAL_GPIO_WritePin(MLED1_GPIO_Port, MLED1_Pin, GPIO_PIN_SET);
-		HAL_Delay(100);
-		HAL_GPIO_WritePin(MLED1_GPIO_Port, MLED1_Pin, GPIO_PIN_RESET);
-		HAL_Delay(900);
+		/* USER CODE END 3 */
 	}
-	/* USER CODE END 3 */
 }
-
 /**
  * @brief System Clock Configuration
  * @retval None
@@ -181,7 +136,13 @@ void SystemClock_Config(void)
 	RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
 	RCC_OscInitStruct.HSIState = RCC_HSI_ON;
 	RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
-	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+	RCC_OscInitStruct.PLL.PLLState = RCC_PLL_ON;
+	RCC_OscInitStruct.PLL.PLLSource = RCC_PLLSOURCE_HSI;
+	RCC_OscInitStruct.PLL.PLLM = RCC_PLLM_DIV1;
+	RCC_OscInitStruct.PLL.PLLN = 12;
+	RCC_OscInitStruct.PLL.PLLP = RCC_PLLP_DIV2;
+	RCC_OscInitStruct.PLL.PLLQ = RCC_PLLQ_DIV4;
+	RCC_OscInitStruct.PLL.PLLR = RCC_PLLR_DIV2;
 	if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
 	{
 		Error_Handler();
@@ -242,6 +203,33 @@ static void MX_FDCAN1_Init(void)
 	/* USER CODE BEGIN FDCAN1_Init 2 */
 
 	/* USER CODE END FDCAN1_Init 2 */
+
+}
+
+/**
+ * @brief RNG Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_RNG_Init(void)
+{
+
+	/* USER CODE BEGIN RNG_Init 0 */
+
+	/* USER CODE END RNG_Init 0 */
+
+	/* USER CODE BEGIN RNG_Init 1 */
+
+	/* USER CODE END RNG_Init 1 */
+	hrng.Instance = RNG;
+	hrng.Init.ClockErrorDetection = RNG_CED_ENABLE;
+	if (HAL_RNG_Init(&hrng) != HAL_OK)
+	{
+		Error_Handler();
+	}
+	/* USER CODE BEGIN RNG_Init 2 */
+
+	/* USER CODE END RNG_Init 2 */
 
 }
 
@@ -341,35 +329,6 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
-PUTCHAR_PROTOTYPE
-{
-	/* Place your implementation of fputc here */
-	/* e.g. write a character to the USART1 and Loop until the end of transmission */
-	HAL_UART_Transmit(&huart1, (uint8_t*) &ch, 1, 0xFFFF);
-	return ch;
-}
-
-void debug_FDCAN_Status()
-{
-	uint32_t psr = FDCAN1->PSR;
-	uint32_t ecr = FDCAN1->ECR;
-	uint32_t ir = FDCAN1->IR;
-
-//    printf("Protocol Status Register (PSR): 0x%08lX\n", psr);
-	printf("LEC: %lu | ", (psr & FDCAN_PSR_LEC_Msk) >> FDCAN_PSR_LEC_Pos);
-	printf("EP: %lu | ", (psr & FDCAN_PSR_EP_Msk) >> FDCAN_PSR_EP_Pos);
-	printf("EW: %lu | ", (psr & FDCAN_PSR_EW_Msk) >> FDCAN_PSR_EW_Pos);
-	printf("BO: %lu | ", (psr & FDCAN_PSR_BO_Msk) >> FDCAN_PSR_BO_Pos);
-
-//    printf("ECR: 0x%08lX | ", ecr);
-	printf("TEC: %lu | ", (ecr & FDCAN_ECR_TEC_Msk) >> FDCAN_ECR_TEC_Pos);
-	printf("REC: %lu | ", (ecr & FDCAN_ECR_REC_Msk) >> FDCAN_ECR_REC_Pos);
-
-	printf("IR: 0x%08lX | ", ir);
-
-	printf("\r\n");
-}
 
 /* USER CODE END 4 */
 

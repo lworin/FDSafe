@@ -32,6 +32,8 @@ extern "C" {
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
+#include "fdsafe.h"
+
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -65,6 +67,10 @@ void Error_Handler(void);
 #define MLED1_GPIO_Port GPIOB
 
 /* USER CODE BEGIN Private defines */
+
+extern FDCAN_HandleTypeDef hfdcan1;
+extern RNG_HandleTypeDef hrng;
+extern UART_HandleTypeDef huart1;
 
 /* USER CODE END Private defines */
 
