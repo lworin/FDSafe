@@ -16,9 +16,8 @@
 #include <math.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <stdio.h>
-
-#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
+#include "uart.h"
+#include "fdcan.h"
 
 #define DATA_SIZE 12
 
