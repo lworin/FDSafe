@@ -19,7 +19,8 @@
 #include "uart.h"
 #include "fdcan.h"
 
-#define DATA_SIZE 12
+#define DATA_SIZE 8
+#define EMPTY_BYTE_VALUE 0xFF
 
 #define TIME_INCREMENT_SLOW 0.01
 #define TIME_INCREMENT_DFLT 0.10

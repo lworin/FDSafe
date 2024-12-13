@@ -14,19 +14,16 @@
 #include "main.h"
 
 
-static float simulateValue(float min_value, float max_value, float *time_var, float time_step, int jitter);
+static float simulate_value(float min_value, float max_value, float *time_var, float time_step, int jitter);
 static void clear_data(uint8_t *data, uint8_t size, uint8_t value);
 
 
 uint8_t TxData[DATA_SIZE];
-int idx = 0;
 
 
 void fdsafe_setup() {
 
     fdcan_setup();
-
-	clear_data(TxData, sizeof(TxData), 0x00);
 }
 
 void fdsafe_main() {
@@ -47,6 +44,11 @@ void fdsafe_main() {
 
 	uint32_t seed = 0;
 
+	uint32_t next_tick_hi = 0;
+	uint32_t next_tick_st = 0;
+	uint32_t next_tick_lo = 0;
+
+	/* Random initial vehicle distance */
     HAL_RNG_GenerateRandomNumber(&hrng, &vehicle_distance);
 	vehicle_distance = vehicle_distance % 10000;
 	vd_aux = vehicle_distance;
@@ -57,50 +59,85 @@ void fdsafe_main() {
 		HAL_RNG_GenerateRandomNumber(&hrng, &seed);
 		srand(seed);
 
-		eng_speed = simulateValue(800, 7000, &time_rpm, TIME_INCREMENT_DFLT, 100) * 8; // Simulate engine speed
-		acc_pedal = simulateValue(0, 100, &time_acc, TIME_INCREMENT_DFLT, 5) / 0.4; // Simulate accelerator position
-		vehicle_speed = simulateValue(0, 120, &time_speed, TIME_INCREMENT_FAST, 5) * 256; // Simulate vehicle speed
-		eng_temperature = simulateValue(85, 95, &time_temp, TIME_INCREMENT_SLOW, 1) + 40; // Simulate engine temperature
-		fuel_level = simulateValue(10, 100, &time_fuel, TIME_INCREMENT_SLOW, 1) / 0.4; // Simulate fuel level
+		/* Generate simulated data */
+		eng_speed = simulate_value(800, 7000, &time_rpm, TIME_INCREMENT_DFLT, 100) * 8; // Simulate engine speed
+		acc_pedal = simulate_value(0, 100, &time_acc, TIME_INCREMENT_DFLT, 5) / 0.4; // Simulate accelerator position
+		vehicle_speed = simulate_value(0, 120, &time_speed, TIME_INCREMENT_FAST, 5) * 256; // Simulate vehicle speed
+		eng_temperature = simulate_value(85, 95, &time_temp, TIME_INCREMENT_SLOW, 1) + 40; // Simulate engine temperature
+		fuel_level = simulate_value(10, 100, &time_fuel, TIME_INCREMENT_SLOW, 1) / 0.4; // Simulate fuel level
 		vd_aux = vd_aux + TIME_INCREMENT_DFLT; // Simulate vehicle distance
 		vehicle_distance = vd_aux / 5; // Simulate vehicle distance
 
-		TxData[0] = idx;
-		TxData[1] = idx++;
-		TxData[2] = (uint8_t)(eng_speed & 0xFF);
-		TxData[3] = (uint8_t)(eng_speed >> 8 & 0xFF);
-		TxData[4] = (uint8_t)(vehicle_speed & 0xFF);
-		TxData[5] = (uint8_t)(vehicle_speed >> 8 & 0xFF);
+		// printf("%d ", (int)(eng_speed/8));
+		// printf("%d ", (int)(acc_pedal*0.4));
+		// printf("%d ", (int)(vehicle_speed/256));
+		// printf("%d ", (int)(eng_temperature-40));
+		// printf("%d ", (int)(fuel_level*0.4));
+		// printf("%d ", (int)(vehicle_distance*5));
+		// printf("\r\n");
 
-		printf("%d ", (int)(eng_speed/8));
-		printf("%d ", (int)(acc_pedal*0.4));
-		printf("%d ", (int)(vehicle_speed/256));
-		printf("%d ", (int)(eng_temperature-40));
-		printf("%d ", (int)(fuel_level*0.4));
-		printf("%d ", (int)(vehicle_distance*5));
-		printf("\r\n");
+		/* Build and send high frequence messages */
+		if (HAL_GetTick() >= next_tick_hi) {
+			
+			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
+			TxData[4] = (uint8_t)(eng_speed & 0xFF);
+			TxData[5] = (uint8_t)(eng_speed >> 8 & 0xFF);
+			TxData[7] = acc_pedal;
+			fdcan_send(ID_ENGINE_CONTROLLER, TxData, sizeof(TxData));
+			
+			next_tick_hi = FREQ_INTERVAL_HI + HAL_GetTick();
+		}
 
-		fdcan_send(ID_ENGINE_CONTROLLER, TxData);
+		/* Build and send standard frequence messages */
+		if (HAL_GetTick() >= next_tick_st) {
+			
+			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
+			TxData[6] = (uint8_t)(eng_speed & 0xFF);
+			TxData[7] = (uint8_t)(eng_speed >> 8 & 0xFF);
+			fdcan_send(ID_TACHOGRAPH, TxData, sizeof(TxData));
 
-		HAL_GPIO_WritePin(MLED1_GPIO_Port, MLED1_Pin, GPIO_PIN_SET);
-		HAL_Delay(100);
-		HAL_GPIO_WritePin(MLED1_GPIO_Port, MLED1_Pin, GPIO_PIN_RESET);
-		HAL_Delay(900);
+			next_tick_st = FREQ_INTERVAL_ST + HAL_GetTick();
+		}
+		
+		/* Build and send low frequence messages */
+		if (HAL_GetTick() >= next_tick_lo) {
+			
+			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
+			TxData[7] = eng_temperature;
+			fdcan_send(ID_ENGINE_TEMPERATURE, TxData, sizeof(TxData));
+
+			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
+			TxData[1] = fuel_level;
+			fdcan_send(ID_FUEL, TxData, sizeof(TxData));
+			
+			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
+			TxData[0] = (uint8_t)(eng_speed & 0xFF);
+			TxData[1] = (uint8_t)(eng_speed >> 8 & 0xFF);
+			TxData[2] = (uint8_t)(eng_speed >> 16 & 0xFF);
+			TxData[3] = (uint8_t)(eng_speed >> 24 & 0xFF);
+			fdcan_send(ID_DISTANCE, TxData, sizeof(TxData));
+
+			next_tick_lo = FREQ_INTERVAL_LO + HAL_GetTick();
+		}
+
+		// HAL_GPIO_WritePin(MLED1_GPIO_Port, MLED1_Pin, GPIO_PIN_SET);
+		// HAL_Delay(100);
+		// HAL_GPIO_WritePin(MLED1_GPIO_Port, MLED1_Pin, GPIO_PIN_RESET);
+		// HAL_Delay(900);
 	}
 }
 
 /**
  * @brief Simulate a variable with a sine wave and jitter
  * 
- * @param min_value 
- * @param max_value 
- * @param time_var 
- * @param time_step 
- * @param jitter 
+ * @param min_value Minimum value to be simulated
+ * @param max_value Maximum value to be simulated
+ * @param time_var Variable to store the simulated time reference
+ * @param time_step Step value to increment the simulated time reference
+ * @param jitter Jitter base value
  * @return float 
  */
-static float simulateValue(float min_value, float max_value, float *time_var, float time_step, int jitter)
-{
+static float simulate_value(float min_value, float max_value, float *time_var, float time_step, int jitter) {
 	// Generate the base value using a sine wave
 	float base_value = min_value + (max_value - min_value) * 0.5 * (1 + sin(*time_var));
 
@@ -120,14 +157,12 @@ static float simulateValue(float min_value, float max_value, float *time_var, fl
 /**
  * @brief Clear the payload array
  * 
- * @param data 
- * @param size 
- * @param value 
+ * @param data Payload to be cleared
+ * @param size Size of the payload
+ * @param value Value to write on each byte
  */
-static void clear_data(uint8_t *data, uint8_t size, uint8_t value)
-{
-	for (uint8_t i=0; i<size; i++)
-	{
+static void clear_data(uint8_t *data, uint8_t size, uint8_t value) {
+	for (uint8_t i=0; i<size; i++) {
 		data[i] = value;
 	}
 }
