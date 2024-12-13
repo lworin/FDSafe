@@ -18,18 +18,19 @@
 
 
 /**
- * @brief Start FDCAN, enable the FDCAN transceiver and initialize the TxHeader struct
+ * @brief Start FDCAN and enable the FDCAN transceiver
  * 
  */
 void fdcan_setup();
 
 /**
- * @brief Send message
+ * @brief Build and send the message
  * 
  * @param id Identifier of the message
  * @param data Payload
+ * @param size Size of the payload
  */
-void fdcan_send(uint16_t id, uint8_t *data);
+void fdcan_send(uint32_t id, uint8_t *data, size_t size);
 
 
 #endif
