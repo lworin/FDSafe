@@ -14,7 +14,7 @@
 
 
 /* Static functions prototypes */
-static void build_header(FDCAN_TxHeaderTypeDef TxHeader, uint32_t id, size_t size);
+static void build_header(FDCAN_TxHeaderTypeDef *TxHeader, uint32_t id, size_t size);
 
 
 void fdcan_setup() {
@@ -33,7 +33,7 @@ void fdcan_send(uint32_t id, uint8_t *data, size_t size) {
 	FDCAN_TxHeaderTypeDef TxHeader;
 
     build_header(&TxHeader, id, size);
-	ret = (&hfdcan1, &TxHeader, data);
+	ret = HAL_FDCAN_AddMessageToTxFifoQ(&hfdcan1, &TxHeader, data);
 	
 	if (ret != HAL_OK) {
 		printf("FDCAN send error: %d\r\n", (int)ret);
@@ -48,7 +48,7 @@ void fdcan_send(uint32_t id, uint8_t *data, size_t size) {
  * @param id Identifier of the message
  * @param size Size of the payload
  */
-static void build_header(FDCAN_TxHeaderTypeDef TxHeader, uint32_t id, size_t size) {
+static void build_header(FDCAN_TxHeaderTypeDef *TxHeader, uint32_t id, size_t size) {
 	TxHeader->Identifier = id;
 	TxHeader->IdType = FDCAN_STANDARD_ID;
 	TxHeader->TxFrameType = FDCAN_FRAME_FD_NO_BRS;
