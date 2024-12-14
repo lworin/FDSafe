@@ -14,12 +14,39 @@
 #include "main.h"
 
 
-static float simulate_value(float min_value, float max_value, float *time_var, float time_step, int jitter);
+/* Message parameters */
+#define DATA_SIZE 8
+#define EMPTY_BYTE_VALUE 0xFF
+
+#define ID_ENGINE_CONTROLLER 0x6F
+#define ID_TACHOGRAPH 0x14D
+#define ID_ENGINE_TEMPERATURE 0x309
+#define ID_FUEL 0x3E7
+#define ID_DISTANCE 0x7B5
+
+#define FREQ_INTERVAL_HI 25 MILLISECONDS
+#define FREQ_INTERVAL_ST 100 MILLISECONDS
+#define FREQ_INTERVAL_LO 1 SECONDS
+
+
+/* Simulated variable struct */
+typedef struct {
+	float value;
+	uint32_t max_value;
+	uint32_t min_value;
+	float time;
+	float time_step;
+	int variation;
+	uint32_t updt_interval;
+	uint32_t next_updt;
+} SimulatedVar;
+
+
+/* Static function prototypes */
+static void simulate_osc_value(SimulatedVar *variable);
+static void simulate_cumul_value(SimulatedVar *variable);
 static void clear_data(uint8_t *data, uint8_t size, uint8_t value);
 static void print_data(uint32_t id, uint8_t *data, uint8_t size);
-
-
-uint8_t TxData[DATA_SIZE];
 
 
 void fdsafe_setup() {
@@ -29,31 +56,66 @@ void fdsafe_setup() {
 
 void fdsafe_main() {
 
-    uint16_t eng_speed = 0;
-	uint8_t eng_temperature = 0;
-	uint8_t acc_pedal = 0;
-	uint16_t vehicle_speed = 0;
-	uint32_t vehicle_distance = 0;
-	uint8_t fuel_level = 0;
+    SimulatedVar eng_speed = {
+		.value = 0.0,
+		.max_value = 7000,
+		.min_value = 800,
+		.time = 0.0,
+		.time_step = 0.01,
+		.variation = 100,
+		.updt_interval = 25 MILLISECONDS,
+		.next_updt = 0,
+	};
+	SimulatedVar eng_temperature = {
+		.value = 0.0,
+		.max_value = 100,
+		.min_value = 60,
+		.time = 0.0,
+		.time_step = 0.01,
+		.variation = 3,
+		.updt_interval = 2 SECONDS,
+		.next_updt = 0,
+	};
+	SimulatedVar vehicle_speed = {
+		.value = 0.0,
+		.max_value = 120,
+		.min_value = 0,
+		.time = 0.0,
+		.time_step = 0.01,
+		.variation = 7,
+		.updt_interval = 1 SECONDS,
+		.next_updt = 0,
+	};
+	SimulatedVar vehicle_distance = {
+		.value = 0.0,
+		.max_value = 1000000000,
+		.min_value = 0.0,
+		.time = 0.0,
+		.time_step = 0.0,
+		.variation = 150,
+		.updt_interval = 10 SECONDS,
+		.next_updt = 0,
+	};
+	SimulatedVar fuel_level = {
+		.value = 0.0,
+		.max_value = 100,
+		.min_value = 20,
+		.time = 0.0,
+		.time_step = 0.0,
+		.variation = -1,
+		.updt_interval = 60 SECONDS,
+		.next_updt = 0,
+	};
 
-	float time_rpm = 0.0;
-	float time_temp = 0.0;
-	float time_acc = 0.0;
-	float time_speed = 0.0;
-	float time_fuel = 0.0;
-	float vd_aux = 0.0;
+	uint8_t TxData[DATA_SIZE];
 
 	uint32_t seed = 0;
 
-	uint32_t next_tick_hi = 0;
-	uint32_t next_tick_st = 0;
-	uint32_t next_tick_lo = 0;
-	uint32_t next_tick_updt = 0;
+	uint32_t next_send_hi = 0;
+	uint32_t next_send_st = 0;
+	uint32_t next_send_lo = 0;
 
-	/* Random initial vehicle distance */
-    HAL_RNG_GenerateRandomNumber(&hrng, &vehicle_distance);
-	vehicle_distance = vehicle_distance % 10000000;
-	vd_aux = vehicle_distance;
+	uint32_t value;
 
     while(1) {
 
@@ -61,112 +123,140 @@ void fdsafe_main() {
 		HAL_RNG_GenerateRandomNumber(&hrng, &seed);
 		srand(seed);
 
-		/* Generate simulated data */
-		if (HAL_GetTick() >= next_tick_updt) {
-			eng_speed = simulate_value(800, 7000, &time_rpm, TIME_INCREMENT_DFLT, 100) * 8; // Simulate engine speed
-			acc_pedal = simulate_value(0, 100, &time_acc, TIME_INCREMENT_DFLT, 5) / 0.4; // Simulate accelerator position
-			vehicle_speed = simulate_value(0, 120, &time_speed, TIME_INCREMENT_DFLT, 5) * 256; // Simulate vehicle speed
-			eng_temperature = simulate_value(85, 95, &time_temp, TIME_INCREMENT_SLOW, 1) + 40; // Simulate engine temperature
-			fuel_level = simulate_value(10, 100, &time_fuel, TIME_INCREMENT_SLOW, 1) / 0.4; // Simulate fuel level
-			vd_aux = vd_aux + 0.5; // Simulate vehicle distance
-			vehicle_distance = vd_aux / 5; // Simulate vehicle distance
-			next_tick_updt = SIMULATION_INTERVAL + HAL_GetTick();
+		/* Generate simulated engine speed */
+		if (HAL_GetTick() >= eng_speed.next_updt) {
+			simulate_osc_value(&eng_speed);
+			eng_speed.next_updt = eng_speed.updt_interval + HAL_GetTick();
 		}
 
-		// printf("%d ", (int)(eng_speed/8));
-		// printf("%d ", (int)(acc_pedal*0.4));
-		// printf("%d ", (int)(vehicle_speed/256));
-		// printf("%d ", (int)(eng_temperature-40));
-		// printf("%d ", (int)(fuel_level*0.4));
-		// printf("%d ", (int)(vehicle_distance*5));
-		// printf("\r\n");
+		/* Generate simulated engine temperature */
+		if (HAL_GetTick() >= eng_temperature.next_updt) {
+			simulate_osc_value(&eng_temperature);
+			eng_temperature.next_updt = eng_temperature.updt_interval + HAL_GetTick();
+		}
+
+		/* Generate simulated vehicle speed */
+		if (HAL_GetTick() >= vehicle_speed.next_updt) {
+			simulate_osc_value(&vehicle_speed);
+			vehicle_speed.next_updt = vehicle_speed.updt_interval + HAL_GetTick();
+		}
+
+		/* Generate simulated vehicle distance */
+		if (HAL_GetTick() >= vehicle_distance.next_updt) {
+			simulate_cumul_value(&vehicle_distance);
+			vehicle_distance.next_updt = vehicle_distance.updt_interval + HAL_GetTick();
+		}
+
+		/* Generate simulated fuel level */
+		if (HAL_GetTick() >= fuel_level.next_updt) {
+			simulate_cumul_value(&fuel_level);
+			fuel_level.next_updt = fuel_level.updt_interval + HAL_GetTick();
+		}
 
 		/* Build and send high frequence messages */
-		if (HAL_GetTick() >= next_tick_hi) {
-			
-			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
-			TxData[4] = (uint8_t)(eng_speed & 0xFF);
-			TxData[5] = (uint8_t)(eng_speed >> 8 & 0xFF);
-			TxData[7] = acc_pedal;
-			fdcan_send(ID_ENGINE_CONTROLLER, TxData, sizeof(TxData));
+		if (HAL_GetTick() >= next_send_hi) {
 
+			value = eng_speed.value * 8;
+			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
+			TxData[4] = (uint8_t)(value & 0xFF);
+			TxData[5] = (uint8_t)(value >> 8 & 0xFF);
+			fdcan_send(ID_ENGINE_CONTROLLER, TxData, sizeof(TxData));
 			print_data(ID_ENGINE_CONTROLLER, TxData, sizeof(TxData));
 			
-			next_tick_hi = FREQ_INTERVAL_HI + HAL_GetTick();
+			next_send_hi = FREQ_INTERVAL_HI + HAL_GetTick();
 		}
 
 		/* Build and send standard frequence messages */
-		if (HAL_GetTick() >= next_tick_st) {
-			
-			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
-			TxData[6] = (uint8_t)(vehicle_speed & 0xFF);
-			TxData[7] = (uint8_t)(vehicle_speed >> 8 & 0xFF);
-			fdcan_send(ID_TACHOGRAPH, TxData, sizeof(TxData));
+		if (HAL_GetTick() >= next_send_st) {
 
+			value = vehicle_speed.value * 256;
+			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
+			TxData[6] = (uint8_t)(value & 0xFF);
+			TxData[7] = (uint8_t)(value >> 8 & 0xFF);
+			fdcan_send(ID_TACHOGRAPH, TxData, sizeof(TxData));
 			print_data(ID_TACHOGRAPH, TxData, sizeof(TxData));
 
-			next_tick_st = FREQ_INTERVAL_ST + HAL_GetTick();
+			next_send_st = FREQ_INTERVAL_ST + HAL_GetTick();
 		}
 		
 		/* Build and send low frequence messages */
-		if (HAL_GetTick() >= next_tick_lo) {
-			
-			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
-			TxData[7] = eng_temperature;
-			fdcan_send(ID_ENGINE_TEMPERATURE, TxData, sizeof(TxData));
+		if (HAL_GetTick() >= next_send_lo) {
 
+			value = eng_temperature.value + 40;
+			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
+			TxData[7] = (uint8_t)(value & 0xFF);
+			fdcan_send(ID_ENGINE_TEMPERATURE, TxData, sizeof(TxData));
 			print_data(ID_ENGINE_TEMPERATURE, TxData, sizeof(TxData));
 
+			value = fuel_level.value / 0.4;
 			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
-			TxData[1] = fuel_level;
+			TxData[1] = (uint8_t)(value & 0xFF);
 			fdcan_send(ID_FUEL, TxData, sizeof(TxData));
-
 			print_data(ID_FUEL, TxData, sizeof(TxData));
 			
+			value = vehicle_distance.value / 5;
 			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
-			TxData[0] = (uint8_t)(vehicle_distance & 0xFF);
-			TxData[1] = (uint8_t)(vehicle_distance >> 8 & 0xFF);
-			TxData[2] = (uint8_t)(vehicle_distance >> 16 & 0xFF);
-			TxData[3] = (uint8_t)(vehicle_distance >> 24 & 0xFF);
+			TxData[0] = (uint8_t)(value & 0xFF);
+			TxData[1] = (uint8_t)(value >> 8 & 0xFF);
+			TxData[2] = (uint8_t)(value >> 16 & 0xFF);
+			TxData[3] = (uint8_t)(value >> 24 & 0xFF);
 			fdcan_send(ID_DISTANCE, TxData, sizeof(TxData));
-
 			print_data(ID_DISTANCE, TxData, sizeof(TxData));
 
-			next_tick_lo = FREQ_INTERVAL_LO + HAL_GetTick();
+			next_send_lo = FREQ_INTERVAL_LO + HAL_GetTick();
 		}
 
-		// HAL_GPIO_WritePin(MLED1_GPIO_Port, MLED1_Pin, GPIO_PIN_SET);
-		// HAL_Delay(100);
-		// HAL_GPIO_WritePin(MLED1_GPIO_Port, MLED1_Pin, GPIO_PIN_RESET);
-		// HAL_Delay(900);
+		// printf("%d ", (int)eng_speed.value);
+		// printf("%d ", (int)eng_temperature.value);
+		// printf("%d ", (int)vehicle_speed.value);
+		// printf("%d ", (int)vehicle_distance.value);
+		// printf("%d ", (int)fuel_level.value);
+		// printf("\r\n");
+		// HAL_Delay(1000);
 	}
 }
 
 /**
- * @brief Simulate a variable with a sine wave and jitter
+ * @brief Update a simulated oscillating variable with a new value
  * 
- * @param min_value Minimum value to be simulated
- * @param max_value Maximum value to be simulated
- * @param time_var Variable to store the simulated time reference
- * @param time_step Step value to increment the simulated time reference
- * @param jitter Jitter base value
- * @return float 
+ * @param variable Pointer to the simulated variable
  */
-static float simulate_value(float min_value, float max_value, float *time_var, float time_step, int jitter) {
+static void simulate_osc_value(SimulatedVar *variable) {
 	// Generate the base value using a sine wave
-	float base_value = min_value + (max_value - min_value) * 0.5 * (1 + sin(*time_var));
+	float base_value = variable->min_value + (variable->max_value - variable->min_value) * 0.5 * (1 + sin(variable->time));
 
-	// Add random jitter
-	float value = base_value + (rand() % (2 * jitter + 1) - jitter); // Jitter in range [-jitter, +jitter]
+	// Add random jitter in range [-jitter, +jitter]
+	variable->value = base_value + (rand() % (2 * variable->variation + 1) - variable->variation);
 
 	// Increment the time variable for smooth variation
-	*time_var += time_step;
+	variable->time += variable->time_step;
 
 	// Clamp the value within the specified range
-	if (value > max_value) value = max_value;
-	if (value < min_value) value = min_value;
+	if (variable->value > variable->max_value) variable->value = variable->max_value;
+	if (variable->value < variable->min_value) variable->value = variable->min_value;
+}
 
-	return value;
+/**
+ * @brief Update a simulated cumulative variable with a new value
+ * 
+ * @param variable Pointer to the simulated variable
+ */
+static void simulate_cumul_value(SimulatedVar *variable) {
+	// Randomic initial value
+	if (variable->value < 0.1) {
+		variable->value = variable->min_value + rand() % (variable->max_value - variable->min_value + 1);
+	}
+
+	// Add random increment or decrement
+	int32_t incdec = (rand() % abs(variable->variation) + 1);
+	if (variable->variation < 0) {
+		incdec = -incdec;
+	}
+	variable->value = variable->value + incdec;
+
+	// Clamp the value within the specified range
+	if (variable->value > variable->max_value) variable->value = variable->max_value;
+	if (variable->value < variable->min_value) variable->value = variable->min_value;
 }
 
 /**
@@ -190,7 +280,7 @@ static void clear_data(uint8_t *data, uint8_t size, uint8_t value) {
  * @param size Data size
  */
 static void print_data(uint32_t id, uint8_t *data, uint8_t size) {
-	printf("%d-%04X-", (int)HAL_GetTick(), (int)id);
+	printf("%d %04X - ", (int)HAL_GetTick(), (int)id);
 	for (uint8_t i=0; i<size; i++) {
 		printf("%02X ", data[i]);
 	}

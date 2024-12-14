@@ -13,34 +13,28 @@
 #ifndef FDSAFE_H
 #define FDSAFE_H
 
+
 #include <math.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include "uart.h"
 #include "fdcan.h"
 
-#define DATA_SIZE 8
-#define EMPTY_BYTE_VALUE 0xFF
-
-#define TIME_INCREMENT_SLOW 0.00001
-#define TIME_INCREMENT_DFLT 0.00010
-#define TIME_INCREMENT_FAST 0.00100
-
 #define MILLISECONDS *1
+#define SECONDS MILLISECONDS*1000
 
-#define FREQ_INTERVAL_HI 20 MILLISECONDS
-#define FREQ_INTERVAL_ST 100 MILLISECONDS
-#define FREQ_INTERVAL_LO 1000 MILLISECONDS
 
-#define SIMULATION_INTERVAL 10 MILLISECONDS
-
-#define ID_ENGINE_CONTROLLER 0x6F
-#define ID_TACHOGRAPH 0x14D
-#define ID_ENGINE_TEMPERATURE 0x309
-#define ID_FUEL 0x3E7
-#define ID_DISTANCE 0x7B5
-
+/**
+ * @brief Application setup routine
+ * 
+ */
 void fdsafe_setup();
+
+/**
+ * @brief Application main routine
+ * 
+ */
 void fdsafe_main();
+
 
 #endif
