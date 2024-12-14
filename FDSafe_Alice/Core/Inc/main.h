@@ -32,7 +32,7 @@ extern "C" {
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
-#include "fdsafe.h"
+#include <app.h>
 
 /* USER CODE END Includes */
 
