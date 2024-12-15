@@ -14,9 +14,6 @@
 #include "main.h"
 
 
-static const uint8_t DLCtoBytes[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64};
-
-
 void fdcan_setup() {
 	HAL_StatusTypeDef ret;
 
@@ -33,7 +30,7 @@ void fdcan_filter_setup() {
 
 	sFilterConfig.IdType = FDCAN_STANDARD_ID;
 	sFilterConfig.FilterIndex = 0;
-	sFilterConfig.FilterType = FDCAN_FILTER_MASK;
+	sFilterConfig.FilterType = FDCAN_FILTER_RANGE;
 	sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
 	sFilterConfig.FilterID1 = 0x000;
 	sFilterConfig.FilterID2 = 0x7FF;
