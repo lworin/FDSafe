@@ -17,6 +17,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include "stm32g4xx_hal.h"
+#include "uart.h"
+#include "fdcan.h"
 
 
 /**
@@ -30,20 +32,6 @@ void fdsafe_setup();
  * 
  */
 void fdsafe_main();
-
-/**
- * @brief FDCAN reception callback
- * 
- * @param hfdcan FDCAN handler
- * @param RxFifo0ITs Interruption
- */
-void fdcan_rx_callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs);
-
-/**
- * @brief Setup FDCAN filter
- * 
- */
-void fdcan_filter_setup();
 
 
 #endif

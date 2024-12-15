@@ -12,77 +12,50 @@
 
 #include <app.h>
 #include "main.h"
-#include "uart.h"
 
 
 #define DATA_SIZE 8
 
-FDCAN_RxHeaderTypeDef RxHeader;
-uint8_t RxData[DATA_SIZE];
-uint8_t printFlag = 0;
+
+static void clear_data(uint8_t *data, uint8_t size, uint8_t value);
 
 
 void fdsafe_setup() {
 
-    if (HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0)
-			!= HAL_OK)
-	{
-		Error_Handler();
-	}
-
-	if (HAL_FDCAN_Start(&hfdcan1) != HAL_OK)
-	{
-		Error_Handler();
-	}
-
-	HAL_GPIO_WritePin(MLED1_GPIO_Port, MLED1_Pin, GPIO_PIN_RESET);
-	HAL_GPIO_WritePin(CAN_MODE_GPIO_Port, CAN_MODE_Pin, GPIO_PIN_RESET);
-
+	fdcan_activate_rx_notification();
+	fdcan_setup();
 }
 
 void fdsafe_main() {
 
+	FDCAN_RxHeaderTypeDef RxHeader;
+	uint8_t RxData[DATA_SIZE];
+
     while (1)
     {
-        if (printFlag)
+		clear_data(RxData, sizeof(RxData), 0xFF);
+        if (fdcan_available())
         {
+			fdcan_read(&RxHeader, RxData);
+			printf("%04X ", (unsigned int)RxHeader.Identifier);
             for (int i = 0; i < sizeof(RxData); i++)
             {
                 printf("%02X ", RxData[i]);
             }
             printf("\r\n");
-            printFlag = 0;
         }
     }
 }
 
-void fdcan_rx_callback(FDCAN_HandleTypeDef *hfdcan, uint32_t RxFifo0ITs) {
-    HAL_GPIO_TogglePin(MLED1_GPIO_Port, MLED1_Pin);
-	if ((RxFifo0ITs & FDCAN_IT_RX_FIFO0_NEW_MESSAGE) != RESET)
-	{
-		/* Retrieve Rx messages from RX FIFO0 */
-		if (HAL_FDCAN_GetRxMessage(hfdcan, FDCAN_RX_FIFO0, &RxHeader, RxData)
-				!= HAL_OK)
-		{
-			/* Reception Error */
-			Error_Handler();
-		}
-		printFlag = 1;
-	}
-}
-
-void fdcan_filter_setup() {
-    FDCAN_FilterTypeDef sFilterConfig;
-
-	sFilterConfig.IdType = FDCAN_STANDARD_ID;
-	sFilterConfig.FilterIndex = 0;
-	sFilterConfig.FilterType = FDCAN_FILTER_MASK;
-	sFilterConfig.FilterConfig = FDCAN_FILTER_TO_RXFIFO0;
-	sFilterConfig.FilterID1 = 0x000;
-	sFilterConfig.FilterID2 = 0x7FF;
-
-	if (HAL_FDCAN_ConfigFilter(&hfdcan1, &sFilterConfig) != HAL_OK)
-	{
-		Error_Handler();
+/**
+ * @brief Clear the payload array
+ * 
+ * @param data Payload to be cleared
+ * @param size Size of the payload
+ * @param value Value to write on each byte
+ */
+static void clear_data(uint8_t *data, uint8_t size, uint8_t value) {
+	for (uint8_t i=0; i<size; i++) {
+		data[i] = value;
 	}
 }
