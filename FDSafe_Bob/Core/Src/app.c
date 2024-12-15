@@ -12,9 +12,9 @@
 
 #include <app.h>
 #include "main.h"
+#include "uart.h"
 
 
-#define PUTCHAR_PROTOTYPE int __io_putchar(int ch)
 #define DATA_SIZE 8
 
 FDCAN_RxHeaderTypeDef RxHeader;
@@ -85,12 +85,4 @@ void fdcan_filter_setup() {
 	{
 		Error_Handler();
 	}
-}
-
-PUTCHAR_PROTOTYPE
-{
-	/* Place your implementation of fputc here */
-	/* e.g. write a character to the USART1 and Loop until the end of transmission */
-	HAL_UART_Transmit(&huart1, (uint8_t*) &ch, 1, 0xFFFF);
-	return ch;
 }
