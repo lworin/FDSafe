@@ -14,8 +14,11 @@
 #include "main.h"
 
 
+#define DEBUG 0
+
+
 /* Message parameters */
-#define DATA_SIZE 8
+#define DATA_SIZE 64
 
 #define ID_ENGINE_CONTROLLER 0x6F
 #define ID_TACHOGRAPH 0x14D
@@ -35,9 +38,13 @@ typedef struct {
 
 
 /* Static function prototypes */
-static void clear_data(uint8_t *data, uint8_t size, uint8_t value);
+static void clear_data(uint8_t *data, size_t size, uint8_t value);
 static void print_raw_data(uint32_t id, uint8_t *data, size_t size);
 static void print_formated_data(Dashboard *dashboard);
+
+
+/* Conversion from Data Length Code to real size in bytes */
+static const uint8_t DLCtoBytes[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64};
 
 
 void fdsafe_setup() {
@@ -96,7 +103,11 @@ void fdsafe_main() {
                 default:
                     break;
             }
+#if DEBUG
+            print_raw_data(RxHeader.Identifier, RxData, DLCtoBytes[RxHeader.DataLength]);
+#else
             print_formated_data(&dashboard);
+#endif
         }
     }
 }
@@ -108,7 +119,7 @@ void fdsafe_main() {
  * @param size Size of the payload
  * @param value Value to write on each byte
  */
-static void clear_data(uint8_t *data, uint8_t size, uint8_t value) {
+static void clear_data(uint8_t *data, size_t size, uint8_t value) {
 	for (uint8_t i=0; i<size; i++) {
 		data[i] = value;
 	}
