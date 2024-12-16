@@ -248,7 +248,7 @@ static void simulate_cumul_value(SimulatedVar *variable) {
 	}
 
 	// Add random increment or decrement
-	int32_t incdec = (rand() % abs(variable->variation) + 1);
+	int32_t incdec = (rand() % (abs(variable->variation) + 1));
 	if (variable->variation < 0) {
 		incdec = -incdec;
 	}
