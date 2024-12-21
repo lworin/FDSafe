@@ -20,6 +20,7 @@
 #include "uart.h"
 #include "fdcan.h"
 #include "cmox_crypto.h"
+#include "crypto.h"
 
 #define MILLISECONDS *1
 #define SECONDS MILLISECONDS*1000

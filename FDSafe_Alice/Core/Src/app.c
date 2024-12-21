@@ -15,7 +15,7 @@
 
 
 /* Message parameters */
-#define DATA_SIZE 8
+#define DATA_SIZE 20
 #define EMPTY_BYTE_VALUE 0xFF
 
 #define ID_ENGINE_CONTROLLER 0x6F
@@ -27,6 +27,8 @@
 #define FREQ_INTERVAL_HI 25 MILLISECONDS
 #define FREQ_INTERVAL_ST 100 MILLISECONDS
 #define FREQ_INTERVAL_LO 1 SECONDS
+
+#define ENCRYPTION_ENABLED 1
 
 
 /* Simulated variable struct */
@@ -52,6 +54,7 @@ static void print_data(uint32_t id, uint8_t *data, uint8_t size);
 void fdsafe_setup() {
 
     fdcan_setup();
+	crypto_setup();
 }
 
 void fdsafe_main() {
@@ -117,6 +120,10 @@ void fdsafe_main() {
 
 	uint32_t value;
 
+#if ENCRYPTION_ENABLED
+	uint8_t cipher_tx_buffer[DATA_SIZE + AUTH_TAG_SIZE + IV_SIZE];
+#endif
+
     while(1) {
 
         // Seed the random number generator
@@ -160,9 +167,15 @@ void fdsafe_main() {
 			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
 			TxData[4] = (uint8_t)(value & 0xFF);
 			TxData[5] = (uint8_t)(value >> 8 & 0xFF);
+#if ENCRYPTION_ENABLED
+			encrypt(TxData, sizeof(TxData), cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			fdcan_send(ID_ENGINE_CONTROLLER, cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			print_data(ID_ENGINE_CONTROLLER, cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			// print_data(ID_ENGINE_CONTROLLER, TxData, sizeof(TxData));
+#else
 			fdcan_send(ID_ENGINE_CONTROLLER, TxData, sizeof(TxData));
 			print_data(ID_ENGINE_CONTROLLER, TxData, sizeof(TxData));
-			
+#endif
 			next_send_hi = FREQ_INTERVAL_HI + HAL_GetTick();
 		}
 
@@ -173,9 +186,15 @@ void fdsafe_main() {
 			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
 			TxData[6] = (uint8_t)(value & 0xFF);
 			TxData[7] = (uint8_t)(value >> 8 & 0xFF);
+#if ENCRYPTION_ENABLED
+			encrypt(TxData, sizeof(TxData), cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			fdcan_send(ID_TACHOGRAPH, cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			print_data(ID_TACHOGRAPH, cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			// print_data(ID_TACHOGRAPH, TxData, sizeof(TxData));
+#else
 			fdcan_send(ID_TACHOGRAPH, TxData, sizeof(TxData));
 			print_data(ID_TACHOGRAPH, TxData, sizeof(TxData));
-
+#endif
 			next_send_st = FREQ_INTERVAL_ST + HAL_GetTick();
 		}
 		
@@ -185,14 +204,28 @@ void fdsafe_main() {
 			value = eng_temperature.value + 40;
 			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
 			TxData[7] = (uint8_t)(value & 0xFF);
+#if ENCRYPTION_ENABLED
+			encrypt(TxData, sizeof(TxData), cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			fdcan_send(ID_ENGINE_TEMPERATURE, cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			print_data(ID_ENGINE_TEMPERATURE, cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			// print_data(ID_ENGINE_TEMPERATURE, TxData, sizeof(TxData));
+#else
 			fdcan_send(ID_ENGINE_TEMPERATURE, TxData, sizeof(TxData));
 			print_data(ID_ENGINE_TEMPERATURE, TxData, sizeof(TxData));
+#endif
 
 			value = fuel_level.value / 0.4;
 			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
 			TxData[1] = (uint8_t)(value & 0xFF);
+#if ENCRYPTION_ENABLED
+			encrypt(TxData, sizeof(TxData), cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			fdcan_send(ID_FUEL, cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			print_data(ID_FUEL, cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			// print_data(ID_FUEL, TxData, sizeof(TxData));
+#else
 			fdcan_send(ID_FUEL, TxData, sizeof(TxData));
 			print_data(ID_FUEL, TxData, sizeof(TxData));
+#endif
 			
 			value = vehicle_distance.value / 5;
 			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
@@ -200,19 +233,17 @@ void fdsafe_main() {
 			TxData[1] = (uint8_t)(value >> 8 & 0xFF);
 			TxData[2] = (uint8_t)(value >> 16 & 0xFF);
 			TxData[3] = (uint8_t)(value >> 24 & 0xFF);
+#if ENCRYPTION_ENABLED
+			encrypt(TxData, sizeof(TxData), cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			fdcan_send(ID_DISTANCE, cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			print_data(ID_DISTANCE, cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			// print_data(ID_DISTANCE, TxData, sizeof(TxData));
+#else
 			fdcan_send(ID_DISTANCE, TxData, sizeof(TxData));
 			print_data(ID_DISTANCE, TxData, sizeof(TxData));
-
+#endif
 			next_send_lo = FREQ_INTERVAL_LO + HAL_GetTick();
 		}
-
-		// printf("%d ", (int)eng_speed.value);
-		// printf("%d ", (int)eng_temperature.value);
-		// printf("%d ", (int)vehicle_speed.value);
-		// printf("%d ", (int)vehicle_distance.value);
-		// printf("%d ", (int)fuel_level.value);
-		// printf("\r\n");
-		// HAL_Delay(1000);
 	}
 }
 
