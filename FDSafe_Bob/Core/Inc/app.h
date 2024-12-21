@@ -19,6 +19,7 @@
 #include "stm32g4xx_hal.h"
 #include "uart.h"
 #include "fdcan.h"
+#include "cmox_crypto.h"
 
 
 /**
