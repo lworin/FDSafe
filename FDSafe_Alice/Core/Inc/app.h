@@ -19,6 +19,7 @@
 #include <stdint.h>
 #include "uart.h"
 #include "fdcan.h"
+#include "cmox_crypto.h"
 
 #define MILLISECONDS *1
 #define SECONDS MILLISECONDS*1000
