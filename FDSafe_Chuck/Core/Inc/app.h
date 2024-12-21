@@ -21,6 +21,10 @@
 #include "fdcan.h"
 
 
+#define MILLISECONDS *1
+#define SECONDS MILLISECONDS*1000
+
+
 /**
  * @brief Application setup routine
  * 

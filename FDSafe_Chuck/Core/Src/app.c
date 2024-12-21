@@ -15,16 +15,23 @@
 
 
 #define DEBUG 0
+#define MALICIOUS_MODE 1
 
 
 /* Message parameters */
-#define DATA_SIZE 64
+#define RX_DATA_SIZE 64
+#define TX_DATA_SIZE 8
+#define EMPTY_BYTE_VALUE 0xFF
 
 #define ID_ENGINE_CONTROLLER 0x6F
 #define ID_TACHOGRAPH 0x14D
 #define ID_ENGINE_TEMPERATURE 0x309
 #define ID_FUEL 0x3E7
 #define ID_DISTANCE 0x7B5
+
+#define FREQ_INTERVAL_HI 25 MILLISECONDS
+#define FREQ_INTERVAL_ST 100 MILLISECONDS
+#define FREQ_INTERVAL_LO 1 SECONDS
 
 
 /* Variables struct */
@@ -41,6 +48,7 @@ typedef struct {
 static void clear_data(uint8_t *data, size_t size, uint8_t value);
 static void print_raw_data(uint32_t id, uint8_t *data, size_t size);
 static void print_formated_data(Dashboard *dashboard);
+static void print_data(uint32_t id, uint8_t *data, uint8_t size);
 
 
 /* Conversion from Data Length Code to real size in bytes */
@@ -56,7 +64,8 @@ void fdsafe_setup() {
 void fdsafe_main() {
 
 	FDCAN_RxHeaderTypeDef RxHeader;
-	uint8_t RxData[DATA_SIZE];
+	uint8_t RxData[RX_DATA_SIZE];
+    uint8_t TxData[TX_DATA_SIZE];
 
     Dashboard dashboard = {
         .eng_speed = 0.0,
@@ -65,6 +74,12 @@ void fdsafe_main() {
         .vehicle_distance = 0.0,
         .fuel_level = 0.0,
     };
+
+    uint32_t next_send_hi = 0;
+	uint32_t next_send_st = 0;
+	uint32_t next_send_lo = 0;
+
+	uint32_t value;
 
     while (1)
     {
@@ -109,6 +124,18 @@ void fdsafe_main() {
             print_formated_data(&dashboard);
 #endif
         }
+
+#if MALICIOUS_MODE
+        /* Build and send malicious tachograph message */
+		if (HAL_GetTick() >= next_send_st) {
+
+			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
+			fdcan_send(ID_TACHOGRAPH, TxData, sizeof(TxData));
+			print_data(ID_TACHOGRAPH, TxData, sizeof(TxData));
+
+			next_send_st = FREQ_INTERVAL_ST + HAL_GetTick();
+		}
+#endif
     }
 }
 
@@ -155,4 +182,19 @@ static void print_formated_data(Dashboard *dashboard) {
         (unsigned int) dashboard->vehicle_distance,
         (unsigned int) dashboard->fuel_level
     );
+}
+
+/**
+ * @brief Print message identifier and data
+ * 
+ * @param id Message identifier
+ * @param data Data payload
+ * @param size Data size
+ */
+static void print_data(uint32_t id, uint8_t *data, uint8_t size) {
+	printf("%d %04X - ", (int)HAL_GetTick(), (int)id);
+	for (uint8_t i=0; i<size; i++) {
+		printf("%02X ", data[i]);
+	}
+	printf("\r\n");
 }

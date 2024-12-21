@@ -58,4 +58,13 @@ uint32_t fdcan_available();
  */
 void fdcan_read(FDCAN_RxHeaderTypeDef *RxHeader, uint8_t *RxData);
 
+/**
+ * @brief Build and send the message
+ * 
+ * @param id Identifier of the message
+ * @param data Payload
+ * @param size Size of the payload
+ */
+void fdcan_send(uint32_t id, uint8_t *data, size_t size);
+
 #endif
