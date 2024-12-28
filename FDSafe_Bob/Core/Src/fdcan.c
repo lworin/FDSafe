@@ -12,6 +12,7 @@
 
 #include "fdcan.h"
 #include "main.h"
+#include "uart.h"
 
 
 void fdcan_setup() {
@@ -19,6 +20,7 @@ void fdcan_setup() {
 
 	ret = HAL_FDCAN_Start(&hfdcan1);
     if (ret != HAL_OK) {
+		printf("FDCAN setup failed\r\n");
 		Error_Handler();
 	}
 
@@ -37,6 +39,7 @@ void fdcan_filter_setup() {
 
 	if (HAL_FDCAN_ConfigFilter(&hfdcan1, &sFilterConfig) != HAL_OK)
 	{
+		printf("FDCAN filter setup failed\r\n");
 		Error_Handler();
 	}
 }
@@ -45,6 +48,7 @@ void fdcan_activate_rx_notification() {
 	if (HAL_FDCAN_ActivateNotification(&hfdcan1, FDCAN_IT_RX_FIFO0_NEW_MESSAGE, 0)
 			!= HAL_OK)
 	{
+		printf("FDCAN rx notification setup failed\r\n");
 		Error_Handler();
 	}
 }
@@ -65,6 +69,7 @@ void fdcan_read(FDCAN_RxHeaderTypeDef *RxHeader, uint8_t *RxData) {
     if (HAL_FDCAN_GetRxMessage(&hfdcan1, FDCAN_RX_FIFO0, RxHeader, RxData)
             != HAL_OK)
     {
+		printf("FDCAN read failed\r\n");
         Error_Handler();
     }
 }

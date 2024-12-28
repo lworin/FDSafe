@@ -14,11 +14,17 @@
 #include "main.h"
 
 
-#define DEBUG 0
+/* Control */
+#define BOB_DEBUG 1
+#define ENCRYPTION_ENABLED 1
 
 
 /* Message parameters */
+#if ENCRYPTION_ENABLED
+#define DATA_SIZE 20
+#else
 #define DATA_SIZE 64
+#endif
 
 #define ID_ENGINE_CONTROLLER 0x6F
 #define ID_TACHOGRAPH 0x14D
@@ -39,25 +45,34 @@ typedef struct {
 
 /* Static function prototypes */
 static void clear_data(uint8_t *data, size_t size, uint8_t value);
+#if BOB_DEBUG
 static void print_raw_data(uint32_t id, uint8_t *data, size_t size);
+#else
 static void print_formated_data(Dashboard *dashboard);
+#endif
 
 
-/* Conversion from Data Length Code to real size in bytes */
-static const uint8_t DLCtoBytes[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64};
+#if BOB_DEBUG
+/* Data Length Code map */
+const uint8_t DLCtoBytes[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64};
+#endif
 
 
 void fdsafe_setup() {
 
 	fdcan_activate_rx_notification();
 	fdcan_setup();
+    crypto_setup();
 }
 
 void fdsafe_main() {
 
+    /* Buffers to store the received message header and data */
 	FDCAN_RxHeaderTypeDef RxHeader;
 	uint8_t RxData[DATA_SIZE];
 
+#if !BOB_DEBUG
+    /* Set of variables */
     Dashboard dashboard = {
         .eng_speed = 0.0,
         .eng_temperature = 0.0,
@@ -65,14 +80,36 @@ void fdsafe_main() {
         .vehicle_distance = 0.0,
         .fuel_level = 0.0,
     };
+#endif
 
+#if ENCRYPTION_ENABLED
+	uint8_t cipher_rx_buffer[DATA_SIZE + AUTH_TAG_SIZE + IV_SIZE];
+#endif
+
+    /**
+     * @brief Infinite loop to read new messages when available and parse them
+     * 
+     * When a new message is available:
+     * 1. Clear received data buffer
+     * 2. Read the message
+     * 3. Decrypt (if applicable)
+     * 4. Parse the message according to the ID and store in the dashboard
+     * 5. Present the data (print)
+     */
     while (1)
     {
-		clear_data(RxData, sizeof(RxData), 0xFF);
         if (fdcan_available())
         {
-			fdcan_read(&RxHeader, RxData);
+            clear_data(RxData, sizeof(RxData), 0xFF);
 
+#if ENCRYPTION_ENABLED
+            fdcan_read(&RxHeader, cipher_rx_buffer);
+	        decrypt(cipher_rx_buffer, RxData, sizeof(RxData));
+#else
+            fdcan_read(&RxHeader, RxData);
+#endif
+
+#if !BOB_DEBUG
             switch (RxHeader.Identifier)
             {
                 case ID_ENGINE_CONTROLLER:
@@ -103,8 +140,14 @@ void fdsafe_main() {
                 default:
                     break;
             }
-#if DEBUG
+#endif
+
+#if BOB_DEBUG
+#if ENCRYPTION_ENABLED
+            print_raw_data(RxHeader.Identifier, RxData, sizeof(RxData));
+#else
             print_raw_data(RxHeader.Identifier, RxData, DLCtoBytes[RxHeader.DataLength]);
+#endif
 #else
             print_formated_data(&dashboard);
 #endif
@@ -125,6 +168,7 @@ static void clear_data(uint8_t *data, size_t size, uint8_t value) {
 	}
 }
 
+#if BOB_DEBUG
 /**
  * @brief Print received data
  * 
@@ -140,7 +184,7 @@ static void print_raw_data(uint32_t id, uint8_t *data, size_t size) {
     }
     printf("\r\n");
 }
-
+#else
 /**
  * @brief 
  * 
@@ -156,3 +200,4 @@ static void print_formated_data(Dashboard *dashboard) {
         (unsigned int) dashboard->fuel_level
     );
 }
+#endif
