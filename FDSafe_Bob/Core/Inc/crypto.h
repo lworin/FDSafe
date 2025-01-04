@@ -20,6 +20,9 @@
 #define AUTH_TAG_SIZE 16
 #define IV_SIZE 12
 
+#define AUTH_OK 0
+#define AUTH_ERROR 1
+
 
 /**
  * @brief Setup the crypto library interface
@@ -34,7 +37,7 @@ void crypto_setup();
  * @param plaintext Buffer to store the plaintext
  * @param exp_plain_size Expected size of the plaintext
  */
-void decrypt(uint8_t *ciphertext, uint8_t *plaintext, size_t exp_plain_size);
+uint8_t decrypt(uint8_t *ciphertext, uint8_t *plaintext, size_t exp_plain_size);
 
 
 #endif

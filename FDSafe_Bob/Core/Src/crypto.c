@@ -41,7 +41,7 @@ void crypto_setup() {
   printf(" OK\r\n");
 }
 
-void decrypt(uint8_t *ciphertext, uint8_t *plaintext, size_t exp_plain_size) {
+uint8_t decrypt(uint8_t *ciphertext, uint8_t *plaintext, size_t exp_plain_size) {
 
   size_t plain_size;
   
@@ -60,7 +60,9 @@ void decrypt(uint8_t *ciphertext, uint8_t *plaintext, size_t exp_plain_size) {
   if (retval != CMOX_CIPHER_AUTH_SUCCESS)
   {
     printf("Invalid message: %X\r\n", (int)retval);
-    Error_Handler();
+    return AUTH_ERROR;
   }
+  
+  return AUTH_OK;
 
 }

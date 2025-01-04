@@ -15,7 +15,7 @@
 
 
 /* Control */
-#define BOB_DEBUG 1
+#define BOB_DEBUG 0
 #define ENCRYPTION_ENABLED 1
 
 
@@ -84,6 +84,7 @@ void fdsafe_main() {
 
 #if ENCRYPTION_ENABLED
 	uint8_t cipher_rx_buffer[DATA_SIZE + AUTH_TAG_SIZE + IV_SIZE];
+    uint8_t auth_return;
 #endif
 
     /**
@@ -93,8 +94,8 @@ void fdsafe_main() {
      * 1. Clear received data buffer
      * 2. Read the message
      * 3. Decrypt (if applicable)
-     * 4. Parse the message according to the ID and store in the dashboard
-     * 5. Present the data (print)
+     * 4. If authentication is valid, parse the message according to the ID and store in the dashboard
+     * 5. If authentication is valid, present the data (print)
      */
     while (1)
     {
@@ -104,42 +105,49 @@ void fdsafe_main() {
 
 #if ENCRYPTION_ENABLED
             fdcan_read(&RxHeader, cipher_rx_buffer);
-	        decrypt(cipher_rx_buffer, RxData, sizeof(RxData));
+	        auth_return = decrypt(cipher_rx_buffer, RxData, sizeof(RxData));
 #else
             fdcan_read(&RxHeader, RxData);
 #endif
 
 #if !BOB_DEBUG
-            switch (RxHeader.Identifier)
+#if ENCRYPTION_ENABLED
+            if(auth_return == AUTH_OK)
             {
-                case ID_ENGINE_CONTROLLER:
-                    dashboard.eng_speed = ((RxData[5] << 8) | RxData[4]) / 8;
-                    break;
+#endif
+                switch (RxHeader.Identifier)
+                {
+                    case ID_ENGINE_CONTROLLER:
+                        dashboard.eng_speed = ((RxData[5] << 8) | RxData[4]) / 8;
+                        break;
 
-                case ID_ENGINE_TEMPERATURE:
-                    dashboard.eng_temperature = RxData[7] - 40;
-                    break;
+                    case ID_ENGINE_TEMPERATURE:
+                        dashboard.eng_temperature = RxData[7] - 40;
+                        break;
 
-                case ID_TACHOGRAPH:
-                    dashboard.vehicle_speed = ((RxData[7] << 8) | RxData[6]) / 256;
-                    break;
+                    case ID_TACHOGRAPH:
+                        dashboard.vehicle_speed = ((RxData[7] << 8) | RxData[6]) / 256;
+                        break;
 
-                case ID_DISTANCE:
-                    dashboard.vehicle_distance = (
-                        (RxData[3] << 24)
-                        | (RxData[2] << 16)
-                        | (RxData[1] << 8)
-                        | RxData[0]
-                        ) * 5;
-                    break;
+                    case ID_DISTANCE:
+                        dashboard.vehicle_distance = (
+                            (RxData[3] << 24)
+                            | (RxData[2] << 16)
+                            | (RxData[1] << 8)
+                            | RxData[0]
+                            ) * 5;
+                        break;
 
-                case ID_FUEL:
-                    dashboard.fuel_level = RxData[1] * 0.4;
-                    break;
-                
-                default:
-                    break;
+                    case ID_FUEL:
+                        dashboard.fuel_level = RxData[1] * 0.4;
+                        break;
+                    
+                    default:
+                        break;
+                }
+#if ENCRYPTION_ENABLED
             }
+#endif
 #endif
 
 #if BOB_DEBUG
@@ -149,7 +157,11 @@ void fdsafe_main() {
             print_raw_data(RxHeader.Identifier, RxData, DLCtoBytes[RxHeader.DataLength]);
 #endif
 #else
-            print_formated_data(&dashboard);
+#if ENCRYPTION_ENABLED
+            if(auth_return == AUTH_OK) {
+                print_formated_data(&dashboard);
+            }
+#endif
 #endif
         }
     }
