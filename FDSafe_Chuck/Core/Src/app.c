@@ -14,13 +14,13 @@
 #include "main.h"
 
 
-#define DEBUG 0
-#define MALICIOUS_MODE 1
+#define CHUCK_DEBUG 1
+#define MALICIOUS_MODE 0
 
 
 /* Message parameters */
 #define RX_DATA_SIZE 64
-#define TX_DATA_SIZE 8
+#define TX_DATA_SIZE 48
 #define EMPTY_BYTE_VALUE 0xFF
 
 #define ID_ENGINE_CONTROLLER 0x6F
@@ -46,13 +46,17 @@ typedef struct {
 
 /* Static function prototypes */
 static void clear_data(uint8_t *data, size_t size, uint8_t value);
+#if CHUCK_DEBUG
 static void print_raw_data(uint32_t id, uint8_t *data, size_t size);
+#else
 static void print_formated_data(Dashboard *dashboard);
-static void print_data(uint32_t id, uint8_t *data, uint8_t size);
+#endif
 
 
+#if CHUCK_DEBUG
 /* Conversion from Data Length Code to real size in bytes */
 static const uint8_t DLCtoBytes[] = {0, 1, 2, 3, 4, 5, 6, 7, 8, 12, 16, 20, 24, 32, 48, 64};
+#endif
 
 
 void fdsafe_setup() {
@@ -65,8 +69,12 @@ void fdsafe_main() {
 
 	FDCAN_RxHeaderTypeDef RxHeader;
 	uint8_t RxData[RX_DATA_SIZE];
+#if MALICIOUS_MODE
     uint8_t TxData[TX_DATA_SIZE];
+    uint32_t next_send_st = 0;
+#endif
 
+#if !CHUCK_DEBUG
     Dashboard dashboard = {
         .eng_speed = 0.0,
         .eng_temperature = 0.0,
@@ -74,12 +82,7 @@ void fdsafe_main() {
         .vehicle_distance = 0.0,
         .fuel_level = 0.0,
     };
-
-    uint32_t next_send_hi = 0;
-	uint32_t next_send_st = 0;
-	uint32_t next_send_lo = 0;
-
-	uint32_t value;
+#endif
 
     while (1)
     {
@@ -87,7 +90,7 @@ void fdsafe_main() {
         if (fdcan_available())
         {
 			fdcan_read(&RxHeader, RxData);
-
+#if !CHUCK_DEBUG
             switch (RxHeader.Identifier)
             {
                 case ID_ENGINE_CONTROLLER:
@@ -118,7 +121,8 @@ void fdsafe_main() {
                 default:
                     break;
             }
-#if DEBUG
+#endif
+#if CHUCK_DEBUG
             print_raw_data(RxHeader.Identifier, RxData, DLCtoBytes[RxHeader.DataLength]);
 #else
             print_formated_data(&dashboard);
@@ -131,7 +135,9 @@ void fdsafe_main() {
 
 			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
 			fdcan_send(ID_TACHOGRAPH, TxData, sizeof(TxData));
-			print_data(ID_TACHOGRAPH, TxData, sizeof(TxData));
+#if CHUCK_DEBUG
+			print_raw_data(ID_TACHOGRAPH, TxData, sizeof(TxData));
+#endif
 
 			next_send_st = FREQ_INTERVAL_ST + HAL_GetTick();
 		}
@@ -152,6 +158,7 @@ static void clear_data(uint8_t *data, size_t size, uint8_t value) {
 	}
 }
 
+#if CHUCK_DEBUG
 /**
  * @brief Print received data
  * 
@@ -167,7 +174,7 @@ static void print_raw_data(uint32_t id, uint8_t *data, size_t size) {
     }
     printf("\r\n");
 }
-
+#else
 /**
  * @brief 
  * 
@@ -183,18 +190,4 @@ static void print_formated_data(Dashboard *dashboard) {
         (unsigned int) dashboard->fuel_level
     );
 }
-
-/**
- * @brief Print message identifier and data
- * 
- * @param id Message identifier
- * @param data Data payload
- * @param size Data size
- */
-static void print_data(uint32_t id, uint8_t *data, uint8_t size) {
-	printf("%d %04X - ", (int)HAL_GetTick(), (int)id);
-	for (uint8_t i=0; i<size; i++) {
-		printf("%02X ", data[i]);
-	}
-	printf("\r\n");
-}
+#endif
