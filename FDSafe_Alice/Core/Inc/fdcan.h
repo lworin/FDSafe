@@ -32,5 +32,12 @@ void fdcan_setup();
  */
 void fdcan_send(uint32_t id, uint8_t *data, size_t size);
 
+/**
+ * @brief Check it is possible to send a new message
+ * 
+ * @return uint8_t 0 if not free, or >1 if free
+ */
+uint8_t fdcan_free_to_send();
+
 
 #endif

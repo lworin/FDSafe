@@ -14,10 +14,15 @@
 #include "main.h"
 
 
+#define ENCRYPTION_ENABLED 1
+#define SIMULATIONS 0
+
 /* Message parameters */
+// #define DATA_SIZE 48 // Force 48 bytes for equalizing with encrypted data field
 #define DATA_SIZE 20
 #define EMPTY_BYTE_VALUE 0xFF
 
+#if SIMULATIONS
 #define ID_ENGINE_CONTROLLER 0x6F
 #define ID_TACHOGRAPH 0x14D
 #define ID_ENGINE_TEMPERATURE 0x309
@@ -27,10 +32,12 @@
 #define FREQ_INTERVAL_HI 25 MILLISECONDS
 #define FREQ_INTERVAL_ST 100 MILLISECONDS
 #define FREQ_INTERVAL_LO 1 SECONDS
+#else
+#define ID_STATISTICS 0x1F
+#endif
 
-#define ENCRYPTION_ENABLED 1
 
-
+#if SIMULATIONS
 /* Simulated variable struct */
 typedef struct {
 	float value;
@@ -42,13 +49,15 @@ typedef struct {
 	uint32_t updt_interval;
 	uint32_t next_updt;
 } SimulatedVar;
-
+#endif
 
 /* Static function prototypes */
+#if SIMULATIONS
 static void simulate_osc_value(SimulatedVar *variable);
 static void simulate_cumul_value(SimulatedVar *variable);
+#endif
 static void clear_data(uint8_t *data, uint8_t size, uint8_t value);
-static void print_data(uint32_t id, uint8_t *data, uint8_t size);
+static void print_data(uint32_t id, uint8_t *data, size_t size);
 
 
 void fdsafe_setup() {
@@ -59,6 +68,7 @@ void fdsafe_setup() {
 
 void fdsafe_main() {
 
+#if SIMULATIONS
     SimulatedVar eng_speed = {
 		.value = 0.0,
 		.max_value = 7000,
@@ -110,15 +120,16 @@ void fdsafe_main() {
 		.next_updt = 0,
 	};
 
-	uint8_t TxData[DATA_SIZE];
-
 	uint32_t seed = 0;
-
 	uint32_t next_send_hi = 0;
 	uint32_t next_send_st = 0;
 	uint32_t next_send_lo = 0;
-
 	uint32_t value;
+#else
+	uint32_t counter = 0;
+#endif
+
+	uint8_t TxData[DATA_SIZE];
 
 #if ENCRYPTION_ENABLED
 	uint8_t cipher_tx_buffer[DATA_SIZE + AUTH_TAG_SIZE + IV_SIZE];
@@ -126,6 +137,7 @@ void fdsafe_main() {
 
     while(1) {
 
+#if SIMULATIONS
         // Seed the random number generator
 		HAL_RNG_GenerateRandomNumber(&hrng, &seed);
 		srand(seed);
@@ -244,9 +256,29 @@ void fdsafe_main() {
 #endif
 			next_send_lo = FREQ_INTERVAL_LO + HAL_GetTick();
 		}
+
+#else
+		if (fdcan_free_to_send()) {
+			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
+			TxData[0] = (uint8_t)(counter & 0xFF);
+			TxData[1] = (uint8_t)(counter >> 8 & 0xFF);
+			TxData[2] = (uint8_t)(counter >> 16 & 0xFF);
+			TxData[3] = (uint8_t)(counter >> 24 & 0xFF);
+#if ENCRYPTION_ENABLED
+			encrypt(TxData, sizeof(TxData), cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			fdcan_send(ID_STATISTICS, cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			print_data(ID_STATISTICS, cipher_tx_buffer, sizeof(cipher_tx_buffer));
+#else
+			fdcan_send(ID_STATISTICS, TxData, sizeof(TxData));
+			print_data(ID_STATISTICS, TxData, sizeof(TxData));
+#endif
+			counter++;
+		}
+#endif
 	}
 }
 
+#if SIMULATIONS
 /**
  * @brief Update a simulated oscillating variable with a new value
  * 
@@ -289,6 +321,7 @@ static void simulate_cumul_value(SimulatedVar *variable) {
 	if (variable->value > variable->max_value) variable->value = variable->max_value;
 	if (variable->value < variable->min_value) variable->value = variable->min_value;
 }
+#endif
 
 /**
  * @brief Clear the payload array
@@ -310,7 +343,7 @@ static void clear_data(uint8_t *data, uint8_t size, uint8_t value) {
  * @param data Data payload
  * @param size Data size
  */
-static void print_data(uint32_t id, uint8_t *data, uint8_t size) {
+static void print_data(uint32_t id, uint8_t *data, size_t size) {
 	printf("%d %04X - ", (int)HAL_GetTick(), (int)id);
 	for (uint8_t i=0; i<size; i++) {
 		printf("%02X ", data[i]);

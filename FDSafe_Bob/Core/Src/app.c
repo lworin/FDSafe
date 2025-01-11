@@ -31,10 +31,12 @@
 #define ID_ENGINE_TEMPERATURE 0x309
 #define ID_FUEL 0x3E7
 #define ID_DISTANCE 0x7B5
+#define ID_STATISTICS 0x1F
 
 
 /* Variables struct */
 typedef struct {
+    uint32_t counter;
 	float eng_speed;
     float eng_temperature;
     float vehicle_speed;
@@ -74,6 +76,7 @@ void fdsafe_main() {
 #if !BOB_DEBUG
     /* Set of variables */
     Dashboard dashboard = {
+        .counter = 0,
         .eng_speed = 0.0,
         .eng_temperature = 0.0,
         .vehicle_speed = 0.0,
@@ -141,6 +144,15 @@ void fdsafe_main() {
                     case ID_FUEL:
                         dashboard.fuel_level = RxData[1] * 0.4;
                         break;
+
+                    case ID_STATISTICS:
+                        dashboard.counter = (
+                            (RxData[3] << 24)
+                            | (RxData[2] << 16)
+                            | (RxData[1] << 8)
+                            | RxData[0]
+                            );
+                        break;
                     
                     default:
                         break;
@@ -191,12 +203,11 @@ static void clear_data(uint8_t *data, size_t size, uint8_t value) {
  * @param size Size of the buffer
  */
 static void print_raw_data(uint32_t id, uint8_t *data, size_t size) {
-    printf("%04X ", (unsigned int)id);
-    for (uint8_t i=0; i<size; i++)
-    {
-        printf("%02X ", data[i]);
-    }
-    printf("\r\n");
+	printf("%d %04X - ", (int)HAL_GetTick(), (int)id);
+	for (uint8_t i=0; i<size; i++) {
+		printf("%02X ", data[i]);
+	}
+	printf("\r\n");
 }
 #else
 /**
@@ -206,7 +217,9 @@ static void print_raw_data(uint32_t id, uint8_t *data, size_t size) {
  */
 static void print_formated_data(Dashboard *dashboard) {
     printf(
-        "%d, %d, %d, %d, %d\r\n",
+        "%d - %d, %d, %d, %d, %d, %d\r\n",
+        (int)HAL_GetTick(),
+        (unsigned int) dashboard->counter,
         (unsigned int) dashboard->eng_speed,
         (unsigned int) dashboard->eng_temperature,
         (unsigned int) dashboard->vehicle_speed,

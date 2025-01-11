@@ -112,3 +112,7 @@ static void build_header(FDCAN_TxHeaderTypeDef *TxHeader, uint32_t id, size_t si
 			break;
 	}
 }
+
+uint8_t fdcan_free_to_send() {
+	return HAL_FDCAN_GetTxFifoFreeLevel(&hfdcan1);
+}
