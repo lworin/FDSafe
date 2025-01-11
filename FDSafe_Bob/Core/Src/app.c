@@ -161,6 +161,8 @@ void fdsafe_main() {
             if(auth_return == AUTH_OK) {
                 print_formated_data(&dashboard);
             }
+#else
+            print_formated_data(&dashboard);
 #endif
 #endif
         }
