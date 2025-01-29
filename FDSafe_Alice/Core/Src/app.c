@@ -15,10 +15,9 @@
 
 
 #define ENCRYPTION_ENABLED 1
-#define SIMULATIONS 0
+#define SIMULATIONS 1
 
 /* Message parameters */
-// #define DATA_SIZE 48 // Force 48 bytes for equalizing with encrypted data field
 #define DATA_SIZE 20
 #define EMPTY_BYTE_VALUE 0xFF
 
@@ -55,15 +54,24 @@ typedef struct {
 #if SIMULATIONS
 static void simulate_osc_value(SimulatedVar *variable);
 static void simulate_cumul_value(SimulatedVar *variable);
+static void print_data(uint32_t id, uint8_t *data, size_t size);
+#else
+#if ENCRYPTION_ENABLED
+static uint32_t get_clock_cycles();
+#endif
 #endif
 static void clear_data(uint8_t *data, uint8_t size, uint8_t value);
-static void print_data(uint32_t id, uint8_t *data, size_t size);
-
 
 void fdsafe_setup() {
 
     fdcan_setup();
 	crypto_setup();
+	    
+    // enable core debug timers
+    SET_BIT(CoreDebug->DEMCR, CoreDebug_DEMCR_TRCENA_Msk);
+
+    // enable the clock counter
+    SET_BIT(DWT->CTRL, DWT_CTRL_CYCCNTENA_Msk);
 }
 
 void fdsafe_main() {
@@ -137,8 +145,10 @@ void fdsafe_main() {
 
     while(1) {
 
+/* Simulations enabled: generate messages with pseudo-randomic variables */
 #if SIMULATIONS
-        // Seed the random number generator
+
+        /* Seed the random number generator */
 		HAL_RNG_GenerateRandomNumber(&hrng, &seed);
 		srand(seed);
 
@@ -183,7 +193,6 @@ void fdsafe_main() {
 			encrypt(TxData, sizeof(TxData), cipher_tx_buffer, sizeof(cipher_tx_buffer));
 			fdcan_send(ID_ENGINE_CONTROLLER, cipher_tx_buffer, sizeof(cipher_tx_buffer));
 			print_data(ID_ENGINE_CONTROLLER, cipher_tx_buffer, sizeof(cipher_tx_buffer));
-			// print_data(ID_ENGINE_CONTROLLER, TxData, sizeof(TxData));
 #else
 			fdcan_send(ID_ENGINE_CONTROLLER, TxData, sizeof(TxData));
 			print_data(ID_ENGINE_CONTROLLER, TxData, sizeof(TxData));
@@ -202,7 +211,6 @@ void fdsafe_main() {
 			encrypt(TxData, sizeof(TxData), cipher_tx_buffer, sizeof(cipher_tx_buffer));
 			fdcan_send(ID_TACHOGRAPH, cipher_tx_buffer, sizeof(cipher_tx_buffer));
 			print_data(ID_TACHOGRAPH, cipher_tx_buffer, sizeof(cipher_tx_buffer));
-			// print_data(ID_TACHOGRAPH, TxData, sizeof(TxData));
 #else
 			fdcan_send(ID_TACHOGRAPH, TxData, sizeof(TxData));
 			print_data(ID_TACHOGRAPH, TxData, sizeof(TxData));
@@ -220,7 +228,6 @@ void fdsafe_main() {
 			encrypt(TxData, sizeof(TxData), cipher_tx_buffer, sizeof(cipher_tx_buffer));
 			fdcan_send(ID_ENGINE_TEMPERATURE, cipher_tx_buffer, sizeof(cipher_tx_buffer));
 			print_data(ID_ENGINE_TEMPERATURE, cipher_tx_buffer, sizeof(cipher_tx_buffer));
-			// print_data(ID_ENGINE_TEMPERATURE, TxData, sizeof(TxData));
 #else
 			fdcan_send(ID_ENGINE_TEMPERATURE, TxData, sizeof(TxData));
 			print_data(ID_ENGINE_TEMPERATURE, TxData, sizeof(TxData));
@@ -233,7 +240,6 @@ void fdsafe_main() {
 			encrypt(TxData, sizeof(TxData), cipher_tx_buffer, sizeof(cipher_tx_buffer));
 			fdcan_send(ID_FUEL, cipher_tx_buffer, sizeof(cipher_tx_buffer));
 			print_data(ID_FUEL, cipher_tx_buffer, sizeof(cipher_tx_buffer));
-			// print_data(ID_FUEL, TxData, sizeof(TxData));
 #else
 			fdcan_send(ID_FUEL, TxData, sizeof(TxData));
 			print_data(ID_FUEL, TxData, sizeof(TxData));
@@ -249,7 +255,6 @@ void fdsafe_main() {
 			encrypt(TxData, sizeof(TxData), cipher_tx_buffer, sizeof(cipher_tx_buffer));
 			fdcan_send(ID_DISTANCE, cipher_tx_buffer, sizeof(cipher_tx_buffer));
 			print_data(ID_DISTANCE, cipher_tx_buffer, sizeof(cipher_tx_buffer));
-			// print_data(ID_DISTANCE, TxData, sizeof(TxData));
 #else
 			fdcan_send(ID_DISTANCE, TxData, sizeof(TxData));
 			print_data(ID_DISTANCE, TxData, sizeof(TxData));
@@ -257,6 +262,7 @@ void fdsafe_main() {
 			next_send_lo = FREQ_INTERVAL_LO + HAL_GetTick();
 		}
 
+/* Simulations disabled: generate a single message for calculating statistics */
 #else
 		if (fdcan_free_to_send()) {
 			clear_data(TxData, sizeof(TxData), EMPTY_BYTE_VALUE);
@@ -265,12 +271,14 @@ void fdsafe_main() {
 			TxData[2] = (uint8_t)(counter >> 16 & 0xFF);
 			TxData[3] = (uint8_t)(counter >> 24 & 0xFF);
 #if ENCRYPTION_ENABLED
+			/* Measure time spent on encryption */
+			uint32_t start_time = get_clock_cycles();
 			encrypt(TxData, sizeof(TxData), cipher_tx_buffer, sizeof(cipher_tx_buffer));
+			uint32_t end_time = get_clock_cycles();
+			printf("%u, %u\r\n", (unsigned int)counter, (unsigned int)(end_time-start_time));
 			fdcan_send(ID_STATISTICS, cipher_tx_buffer, sizeof(cipher_tx_buffer));
-			print_data(ID_STATISTICS, cipher_tx_buffer, sizeof(cipher_tx_buffer));
 #else
 			fdcan_send(ID_STATISTICS, TxData, sizeof(TxData));
-			print_data(ID_STATISTICS, TxData, sizeof(TxData));
 #endif
 			counter++;
 		}
@@ -282,19 +290,19 @@ void fdsafe_main() {
 /**
  * @brief Update a simulated oscillating variable with a new value
  * 
+ * 1. Generate the base value using a sine wave
+ * 2. Add random jitter in range [-jitter, +jitter]
+ * 3. Increment the time variable for smooth variation
+ * 4. Clamp the value within the specified range
+ * 
  * @param variable Pointer to the simulated variable
  */
 static void simulate_osc_value(SimulatedVar *variable) {
-	// Generate the base value using a sine wave
 	float base_value = variable->min_value + (variable->max_value - variable->min_value) * 0.5 * (1 + sin(variable->time));
 
-	// Add random jitter in range [-jitter, +jitter]
 	variable->value = base_value + (rand() % (2 * variable->variation + 1) - variable->variation);
-
-	// Increment the time variable for smooth variation
 	variable->time += variable->time_step;
 
-	// Clamp the value within the specified range
 	if (variable->value > variable->max_value) variable->value = variable->max_value;
 	if (variable->value < variable->min_value) variable->value = variable->min_value;
 }
@@ -302,22 +310,23 @@ static void simulate_osc_value(SimulatedVar *variable) {
 /**
  * @brief Update a simulated cumulative variable with a new value
  * 
+ * 1. Get a randomic initial value
+ * 2. Add random increment or decrement
+ * 3. Clamp the value within the specified range
+ * 
  * @param variable Pointer to the simulated variable
  */
 static void simulate_cumul_value(SimulatedVar *variable) {
-	// Randomic initial value
 	if (variable->value < 0.1) {
 		variable->value = variable->min_value + rand() % (variable->max_value - variable->min_value + 1);
 	}
 
-	// Add random increment or decrement
 	int32_t incdec = (rand() % (abs(variable->variation) + 1));
 	if (variable->variation < 0) {
 		incdec = -incdec;
 	}
 	variable->value = variable->value + incdec;
 
-	// Clamp the value within the specified range
 	if (variable->value > variable->max_value) variable->value = variable->max_value;
 	if (variable->value < variable->min_value) variable->value = variable->min_value;
 }
@@ -336,6 +345,7 @@ static void clear_data(uint8_t *data, uint8_t size, uint8_t value) {
 	}
 }
 
+#if SIMULATIONS
 /**
  * @brief Print message identifier and data
  * 
@@ -350,3 +360,15 @@ static void print_data(uint32_t id, uint8_t *data, size_t size) {
 	}
 	printf("\r\n");
 }
+#else
+#if ENCRYPTION_ENABLED
+/**
+ * @brief Get the current clock cycles counter
+ * 
+ * @return uint32_t Current clock cycle counter value
+ */
+static uint32_t get_clock_cycles() {
+    return DWT->CYCCNT;
+}
+#endif
+#endif
