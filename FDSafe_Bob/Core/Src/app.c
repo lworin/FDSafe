@@ -17,6 +17,7 @@
 /* Control */
 #define BOB_DEBUG 0
 #define ENCRYPTION_ENABLED 1
+#define INTERNAL_LOG 0
 
 
 /* Message parameters */
@@ -44,14 +45,24 @@ typedef struct {
     float fuel_level;
 } Dashboard;
 
+#if INTERNAL_LOG
+#define LOG_ROWS 1000
+uint32_t internal_log[LOG_ROWS][2];
+uint32_t l = 0;
+#endif
+
 
 /* Static function prototypes */
 static void clear_data(uint8_t *data, size_t size, uint8_t value);
 #if BOB_DEBUG
 static void print_raw_data(uint32_t id, uint8_t *data, size_t size);
 #else
+#if !INTERNAL_LOG
 static void print_formated_data(Dashboard *dashboard);
 #endif
+#endif
+static uint32_t get_usec_time();
+static uint32_t get_clock_cycles();
 
 
 #if BOB_DEBUG
@@ -65,6 +76,12 @@ void fdsafe_setup() {
 	fdcan_activate_rx_notification();
 	fdcan_setup();
     crypto_setup();
+    
+    // enable core debug timers
+    SET_BIT(CoreDebug->DEMCR, CoreDebug_DEMCR_TRCENA_Msk);
+
+    // enable the clock counter
+    SET_BIT(DWT->CTRL, DWT_CTRL_CYCCNTENA_Msk);
 }
 
 void fdsafe_main() {
@@ -108,7 +125,9 @@ void fdsafe_main() {
 
 #if ENCRYPTION_ENABLED
             fdcan_read(&RxHeader, cipher_rx_buffer);
+            uint32_t start_time = get_clock_cycles();
 	        auth_return = decrypt(cipher_rx_buffer, RxData, sizeof(RxData));
+            uint32_t end_time = get_clock_cycles();
 #else
             fdcan_read(&RxHeader, RxData);
 #endif
@@ -152,6 +171,22 @@ void fdsafe_main() {
                             | (RxData[1] << 8)
                             | RxData[0]
                             );
+#if INTERNAL_LOG
+                        if (l < LOG_ROWS) {
+                            internal_log[l][0] = get_usec_time();
+                            internal_log[l][1] = dashboard.counter;
+                            l++;
+                        }
+                        else if (l == LOG_ROWS) {
+                            for (uint32_t i = 0; i < LOG_ROWS; i++) {
+                                printf("%u, %u\r\n", (unsigned int)internal_log[i][0], (unsigned int)internal_log[i][1]);
+                            }
+                            l = 9999;
+                        }
+#endif
+#if ENCRYPTION_ENABLED
+                        printf("%u, %u, %u\r\n", (unsigned int)dashboard.counter, (unsigned int)(end_time-start_time), (unsigned int) SystemCoreClock);
+#endif
                         break;
                     
                     default:
@@ -162,6 +197,7 @@ void fdsafe_main() {
 #endif
 #endif
 
+#if !INTERNAL_LOG
 #if BOB_DEBUG
 #if ENCRYPTION_ENABLED
             print_raw_data(RxHeader.Identifier, RxData, sizeof(RxData));
@@ -175,6 +211,7 @@ void fdsafe_main() {
             }
 #else
             print_formated_data(&dashboard);
+#endif
 #endif
 #endif
         }
@@ -209,16 +246,18 @@ static void print_raw_data(uint32_t id, uint8_t *data, size_t size) {
 	}
 	printf("\r\n");
 }
+
 #else
+#if !INTERNAL_LOG
 /**
- * @brief 
+ * @brief Print message identifier and parsed data
  * 
  * @param dashboard 
  */
 static void print_formated_data(Dashboard *dashboard) {
     printf(
-        "%d - %d, %d, %d, %d, %d, %d\r\n",
-        (int)HAL_GetTick(),
+        "%u - %u, %u, %u, %u, %u, %u\r\n",
+        (unsigned int) get_usec_time(),
         (unsigned int) dashboard->counter,
         (unsigned int) dashboard->eng_speed,
         (unsigned int) dashboard->eng_temperature,
@@ -228,3 +267,22 @@ static void print_formated_data(Dashboard *dashboard) {
     );
 }
 #endif
+#endif
+
+/**
+ * @brief Get the time in microseconds
+ * 
+ * @return uint32_t Time in microseconds
+ */
+static uint32_t get_usec_time() {
+    return ((float)get_clock_cycles() / ((float)SystemCoreClock/1000000.0f));
+}
+
+/**
+ * @brief Get the current clock cycles counter
+ * 
+ * @return uint32_t Current clock cycle counter value
+ */
+static uint32_t get_clock_cycles() {
+    return DWT->CYCCNT;
+}
