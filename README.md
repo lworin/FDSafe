@@ -55,22 +55,110 @@ The nodes should be connected in a bus, using a 120R resistor between CAN-H and 
 
 The projects use AES-GCM authenticated encryption (AE) to secure the communication against the threats. The implementation used is the one from the [STM32 cryptographic library](https://www.st.com/en/embedded-software/x-cube-cryptolib.html).
 
-## Scenarios
+> TODO: Detail the data field messages with and without AE
 
-It is possible to compile the programs to perform under four different scenarios and run the tests.
+## Attack scenarios
+
+It is possible to compile the programs to perform under four different scenarios and run the tests. The settings detailed for each of them will be in the `Core/Src/app.c` file of each project.
 
 ### 1: Eavesdropping attack without AE
 
 Alice and Bob will exchange messages normally without any encription or authentication. In this scenario, it is expected that Chuck will be able to read and get intelligible data from the messages.
 
+Settings to be used:
+
+**Alice**
+```C
+#define ENCRYPTION_ENABLED 0
+#define SIMULATIONS 1
+```
+
+**Bob**
+```C
+#define BOB_DEBUG 0
+#define ENCRYPTION_ENABLED 0
+#define INTERNAL_LOG 0
+```
+
+**Chuck**
+```C
+#define CHUCK_DEBUG 1
+#define MALICIOUS_MODE 0
+```
+
+`BOB_DEBUG` and `CHUCK_DEBUG` options define if the data forwarded to UART will be formatted (`0`) or raw (`1`).
+
 ### 2: Eavesdropping attack with AE
 
 Alice and Bob will exchange encrypted and authenticated messages. In this scenario, it is expected that Chuck won't be able to read and get intelligible data from the messages.
+
+Settings to be used:
+
+**Alice**
+```C
+#define ENCRYPTION_ENABLED 1
+#define SIMULATIONS 1
+```
+
+**Bob**
+```C
+#define BOB_DEBUG 0
+#define ENCRYPTION_ENABLED 1
+#define INTERNAL_LOG 0
+```
+
+**Chuck**
+```C
+#define CHUCK_DEBUG 1
+#define MALICIOUS_MODE 0
+```
 
 ### 3: Spoofing attack without AE
 
 While Alice and Bob exchange messages normally without any encription or authentication, Chuck will purposefully inject an empty `0x006F` message into the bus, as if it was sent by Alice. It is expected that Bob will consider this malicious message as valid, since there is no way he can validate it.
 
-### 3: Spoofng attack with AE
+Settings to be used:
+
+**Alice**
+```C
+#define ENCRYPTION_ENABLED 0
+#define SIMULATIONS 1
+```
+
+**Bob**
+```C
+#define BOB_DEBUG 0
+#define ENCRYPTION_ENABLED 0
+#define INTERNAL_LOG 0
+```
+
+**Chuck**
+```C
+#define CHUCK_DEBUG 0
+#define MALICIOUS_MODE 1
+```
+
+`MALICIOUS_MODE` enables Chuck to inject a "fake" message to the bus.
+
+### 4: Spoofng attack with AE
 
 While Alice and Bob will exchange encrypted and authenticated messages, Chuck will purposefully inject an empty `0x006F` message into the bus, as if it was sent by Alice. It is expected that Bob will be able to identify the unauthenticated messages from Chuck and discard them.
+
+**Alice**
+```C
+#define ENCRYPTION_ENABLED 1
+#define SIMULATIONS 1
+```
+
+**Bob**
+```C
+#define BOB_DEBUG 0
+#define ENCRYPTION_ENABLED 1
+#define INTERNAL_LOG 0
+```
+
+**Chuck**
+```C
+#define CHUCK_DEBUG 0
+#define MALICIOUS_MODE 1
+```
