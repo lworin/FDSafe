@@ -55,7 +55,19 @@ The nodes should be connected in a bus, using a 120R resistor between CAN-H and 
 
 The projects use AES-GCM authenticated encryption (AE) to secure the communication against the threats. The implementation used is the one from the [STM32 cryptographic library](https://www.st.com/en/embedded-software/x-cube-cryptolib.html).
 
-> TODO: Detail the data field messages with and without AE
+Structure of a message **without** AE (20 bytes):
+
+| Data      |
+| --------- |
+| 20 bytes  |
+| B0 .. B19 |
+
+Structure of a message **with** AE (48 bytes):
+
+| Data      | Authentication Tag    | Initialization Vector |
+| --------- | --------------------- | --------------------- |
+| 20 bytes  | 16 bytes              | 12 bytes              |
+| B0 .. B19 | B20 .. B35            | B36 .. B47            |
 
 ## Attack scenarios
 
